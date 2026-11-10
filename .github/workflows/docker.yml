@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 env:
@@ -24,6 +26,22 @@ jobs:
         id: vars
         run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Generate repository image metadata
+        id: metadata
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=sha-${{ steps.vars.outputs.sha }}-${{ github.run_number }},enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=sha-${{ steps.vars.outputs.sha }}
+            type=raw,value=staging,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},prefix=v
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -41,6 +59,5 @@ jobs:
           file: ./Dockerfile
           push: true
           provenance: false
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}:sha-${{ steps.vars.outputs.sha }}
-            ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}:latest
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
